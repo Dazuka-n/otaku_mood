@@ -1,0 +1,59 @@
+/* style.css */
+
+/* General dark background */
+body, .stApp {
+    background-color: #1a1a2e;
+    color: #e0e0e0;
+    font-family: 'Segoe UI', sans-serif;
+}
+
+/* Sidebar styling */
+.stSidebar {
+    background-color: #0f0f1f;
+    color: #ffffff;
+}
+
+/* Hero Section */
+.hero {
+    text-align: center;
+    margin-bottom: 30px;
+}
+.hero img {
+    width: 120px;
+    margin-bottom: 10px;
+}
+.hero h1 {
+    color: #ff4dff;
+    font-size: 42px;
+    margin-bottom: 5px;
+}
+.hero p {
+    color: #d4bfff;
+    font-size: 18px;
+}
+
+/* Recommendation Cards */
+.card {
+    background-color: #0f0f1f;
+    border: 2px solid #ff4dff;
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+.card img {
+    border-radius: 8px;
+}
+.card h3 {
+    color: #ff99ff;
+    margin: 5px 0;
+}
+.card p {
+    color: #d4bfff;
+}
+
+/* Buttons */
+.stButton button {
+    background-color: #ff4dff;
+    color: #1a1a2e;
+    border-radius: 5px;
+}

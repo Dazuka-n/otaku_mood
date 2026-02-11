@@ -1,0 +1,87 @@
+[
+  {
+    "id": 1,
+    "title_english": "Clannad",
+    "description": "A touching high-school drama about family and friendship.",
+    "genres": [
+      "Drama",
+      "Romance"
+    ],
+    "tags": [
+      "tears",
+      "slice-of-life"
+    ],
+    "averageScore": 85,
+    "popularity": 120000,
+    "start_year": 2007,
+    "cover_large": ""
+  },
+  {
+    "id": 2,
+    "title_english": "Haikyuu!!",
+    "description": "Volleyball high-energy sports anime about teamwork and growth.",
+    "genres": [
+      "Sports",
+      "Comedy"
+    ],
+    "tags": [
+      "sports",
+      "inspiring"
+    ],
+    "averageScore": 90,
+    "popularity": 300000,
+    "start_year": 2014,
+    "cover_large": ""
+  },
+  {
+    "id": 3,
+    "title_english": "Spirited Away",
+    "description": "A fantasy film by Miyazaki about a girl's adventure in a spirit world.",
+    "genres": [
+      "Adventure",
+      "Fantasy"
+    ],
+    "tags": [
+      "movie",
+      "classic"
+    ],
+    "averageScore": 95,
+    "popularity": 500000,
+    "start_year": 2001,
+    "cover_large": ""
+  },
+  {
+    "id": 4,
+    "title_english": "Toradora!",
+    "description": "A romantic comedy-drama with strong emotional beats.",
+    "genres": [
+      "Romance",
+      "Comedy"
+    ],
+    "tags": [
+      "romcom",
+      "school"
+    ],
+    "averageScore": 88,
+    "popularity": 150000,
+    "start_year": 2008,
+    "cover_large": ""
+  },
+  {
+    "id": 5,
+    "title_english": "Mushishi",
+    "description": "A calm, episodic, atmospheric series for chill moods.",
+    "genres": [
+      "Slice of Life",
+      "Mystery"
+    ],
+    "tags": [
+      "iyashikei",
+      "calm"
+    ],
+    "averageScore": 89,
+    "popularity": 80000,
+    "start_year": 2005,
+    "cover_large": ""
+  }
+]
