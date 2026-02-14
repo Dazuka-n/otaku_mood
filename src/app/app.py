@@ -1,10 +1,17 @@
 # src/app/app.py
+import os
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
+
 import streamlit as st
 from src.utils.config import load_env
 from src.rag.retriever import retrieve
 from src.rag.scoring import rerank
-import json, os
-from pathlib import Path
+import json
 from sentence_transformers import SentenceTransformer
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, TextClassificationPipeline
 from dotenv import load_dotenv
