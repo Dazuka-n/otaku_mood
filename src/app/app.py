@@ -67,10 +67,16 @@ if "show_mood_modal" not in st.session_state:
     st.session_state.show_mood_modal = False
 if "show_favorites_modal" not in st.session_state:
     st.session_state.show_favorites_modal = False
+if "trigger_results" not in st.session_state:
+    st.session_state.trigger_results = False
 
 
-def toggle_sidebar_state():
-    st.session_state.sidebar_collapsed = not st.session_state.sidebar_collapsed
+def trigger_results_view(value: str | None = None, update_text: bool = False):
+    if value is None:
+        value = st.session_state.get("mood_input", "")
+    if update_text:
+        st.session_state.mood_input = value
+    st.session_state.trigger_results = bool(value.strip())
 
 # ------------------- Styling helpers -------------------
 def local_css(file_name):
@@ -129,7 +135,8 @@ sidebar_icons = {
 
 with st.sidebar:
     toggle_label = "→" if st.session_state.sidebar_collapsed else "Seize shadow-console ←"
-    st.button(toggle_label, key="sidebar_toggle", on_click=toggle_sidebar_state)
+    if st.button(toggle_label, key="sidebar_toggle"):
+        st.session_state.sidebar_collapsed = not st.session_state.sidebar_collapsed
 
     sidebar_width = "80px" if st.session_state.sidebar_collapsed else "400px"
     sidebar_padding = "0.6rem 0.3rem" if st.session_state.sidebar_collapsed else "1.3rem"
@@ -191,7 +198,7 @@ with st.sidebar:
                 if col.button(label):
                     st.session_state.year_slider = years
                     st.session_state.year_range_value = years
-                    st.rerun()
+                    st.session_state.trigger_results = True
             era_label = f"You're exploring: {st.session_state.year_range_value[0]}–{st.session_state.year_range_value[1]}"
             st.caption(era_label)
 
@@ -206,7 +213,7 @@ with st.sidebar:
             if st.button("Reset filters"):
                 st.session_state.year_range_value = (1990, 2025)
                 st.session_state.min_score_value = 50
-                st.rerun()
+                st.session_state.trigger_results = True
 
 # ------------------- Hero + intro -------------------
 hero_path = PROJECT_ROOT / "src" / "app" / "heroarea.png"
@@ -258,6 +265,7 @@ with st.container():
             key="mood_input",
             label_visibility="collapsed",
             height=150,
+            on_change=lambda: trigger_results_view(st.session_state.get("mood_input", ""), update_text=False),
         )
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -269,7 +277,7 @@ with st.container():
                 if not st.session_state.mood_input:
                     st.warning("Tell me a feeling first ✨")
                 else:
-                    st.rerun()
+                    trigger_results_view()
 
         if user_input:
             st.caption("🪄 Interpreting your vibe in real time…")
@@ -292,7 +300,7 @@ Explain briefly why the recommended anime matches their mood and preferences."""
 
 results_placeholder = st.empty()
 
-if not user_input:
+if not user_input and not st.session_state.trigger_results:
     with results_placeholder.container():
         st.markdown("<div class='section-spacer-lg'></div>", unsafe_allow_html=True)
         st.markdown(
@@ -313,24 +321,27 @@ if not user_input:
         for idx, (label, text) in enumerate(SUGGESTIONS):
             col = chip_cols[idx]
             if col.button(label, key=f"chip_{idx}"):
-                st.session_state.mood_input = text
-                st.rerun()
+                trigger_results_view(text)
         st.markdown("</div>", unsafe_allow_html=True)
 else:
-    with st.spinner("Summoning anime energy…"):
-        manual_mood = st.session_state.manual_mood_value
-        if manual_mood != "(auto)":
-            mood = manual_mood
-            st.info(f"Manual mood override: {mood}")
-        else:
-            if mood_pipe:
-                pred = mood_pipe(user_input, top_k=1)[0]
-                mood = pred['label']
-                st.success(f"Predicted mood: {mood}")
-            else:
-                mood = "chill"
-                st.warning("Mood model not found, defaulting to 'chill'")
+    if st.session_state.trigger_results:
+        st.session_state.trigger_results = False
 
+    manual_mood = st.session_state.manual_mood_value
+    mood_notice = None
+    if manual_mood != "(auto)":
+        mood = manual_mood
+        mood_notice = ("info", f"Manual mood override: {mood}")
+    else:
+        if mood_pipe:
+            pred = mood_pipe(user_input, top_k=1)[0]
+            mood = pred['label']
+            mood_notice = ("success", f"Predicted mood: {mood}")
+        else:
+            mood = "chill"
+            mood_notice = ("warning", "Mood model not found, defaulting to 'chill'")
+
+    with st.spinner("Summoning anime energy…"):
         candidates = retrieve(user_input, top_k=25)
         reranked = rerank(candidates, mood)[:10]
 
@@ -346,6 +357,9 @@ else:
                 filtered.append(c)
 
     with results_placeholder.container():
+        if mood_notice:
+            level, message = mood_notice
+            getattr(st, level)(message)
         st.subheader("Top recommendations")
         if not filtered:
             st.warning("No titles matched your filters — try widening the year range or lowering the score threshold.")
@@ -355,11 +369,27 @@ else:
                 meta = item['meta']
                 col = cols[i % 2]
                 with col:
-                    cover_url = meta.get("cover_large") or "https://placehold.co/600x800/0f0f1f/FF4DFF?text=No+Cover"
+                    cover_url = meta.get("cover_large")
                     genres = meta.get('genres') or []
                     title = meta.get('title_english') or meta.get('title_romaji') or "Untitled"
-                    score = meta.get('averageScore') or "—"
+                    score_value = meta.get('averageScore')
+                    score_display = score_value if score_value is not None else "—"
                     desc = clean_snippet(meta.get("description"))
+                    year_display = meta.get('start_year') or '—'
+
+                    if cover_url:
+                        cover_markup = f'<img src="{cover_url}" alt="{title} cover">'
+                    else:
+                        initials = ''.join([w[0] for w in title.split()[:2]]).upper() or "??"
+                        cover_markup = f'<div class="cover-placeholder">{initials}</div>'
+
+                    score_class = "score-low"
+                    if score_value is None:
+                        score_class = "score-none"
+                    elif score_value >= 90:
+                        score_class = "score-high"
+                    elif score_value >= 80:
+                        score_class = "score-mid"
 
                     genres_html = "".join([f"<span class='tag'>{g}</span>" for g in genres[:4]])
 
@@ -367,38 +397,32 @@ else:
                     why_text = f"{title} blends {', '.join(genres[:2])} energy that echoes your {mood} vibe." if genres else f"{title} mirrors your {mood} mood with its storytelling."
 
                     st.markdown(f"""
-                    <article class="card hover-lift">
-                        <div class="card-media">
-                            <img src="{cover_url}" alt="{title} cover">
-                        </div>
+                    <article class="card enhanced">
+                        <div class="card-cover">{cover_markup}</div>
                         <div class="card-body">
-                            <div class="card-meta">
-                                <span class="score">{score}</span>
-                                <span class="year">{meta.get('start_year') or '—'}</span>
+                            <div class="card-head">
+                                <div>
+                                    <h3>{title}</h3>
+                                    <p class="year">{year_display}</p>
+                                </div>
+                                <span class="score-badge {score_class}">{score_display}</span>
                             </div>
-                            <h3>{title}</h3>
                             <p class="vibe-summary">{vibe_summary}</p>
+                            <p class="card-description">{desc or 'No synopsis available yet.'}</p>
                             <div class="tags">{genres_html}</div>
-                            <p>{desc or 'No synopsis available yet.'}</p>
-                            <div class="why-match">
-                                <strong>Why this matches you:</strong>
+                            <details class="why-collapse">
+                                <summary>Why this matches you</summary>
                                 <p>{why_text}</p>
-                            </div>
+                            </details>
                         </div>
                     </article>
                     """, unsafe_allow_html=True)
 
-                    action_cols = st.columns([1, 1, 1.2])
-                    if action_cols[0].button(f"👍", key=f"up_{i}"):
-                        st.success("Noted! We'll surface more like this.")
-                    if action_cols[1].button(f"👎", key=f"down_{i}"):
-                        st.info("Thanks! We'll adjust away from this vibe.")
-                    if action_cols[2].button(f"Explain why", key=f"explain_{i}"):
+                    action_cols = st.columns([1, 1])
+                    if action_cols[0].button("Explain", key=f"explain_{i}"):
                         explanation = run_chain_groq(user_input, mood)
                         st.info(explanation)
-
-                    adj_cols = st.columns(len(VIBE_ADJUSTMENTS) + 1)
-                    if adj_cols[0].button("💾 Save", key=f"fav_{i}"):
+                    if action_cols[1].button("Save", key=f"fav_{i}"):
                         fav_file = Path("data_processed/favorites.json")
                         favs = []
                         if fav_file.exists():
@@ -406,9 +430,6 @@ else:
                         favs.append({"meta": meta})
                         fav_file.write_text(json.dumps(favs, ensure_ascii=False, indent=2), encoding="utf-8")
                         st.success("Added to favorites 💾")
-                    for adj, col in zip(VIBE_ADJUSTMENTS, adj_cols[1:]):
-                        if col.button(adj, key=f"adj_{adj}_{i}"):
-                            st.info(f"Tuning recommendations to be {adj.lower()}.")
 
 def favorites_panel():
     fav_file = Path("data_processed/favorites.json")
