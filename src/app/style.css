@@ -37,9 +37,6 @@ section[data-testid="stSidebar"] > div {
 .sidebar-icon-button:hover {
     filter: brightness(1.1);
 }
-.sidebar-toggle button {
-    width: 48px;
-}
 
 /* Hero */
 .hero {

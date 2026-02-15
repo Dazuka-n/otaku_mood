@@ -68,6 +68,10 @@ if "show_mood_modal" not in st.session_state:
 if "show_favorites_modal" not in st.session_state:
     st.session_state.show_favorites_modal = False
 
+
+def toggle_sidebar_state():
+    st.session_state.sidebar_collapsed = not st.session_state.sidebar_collapsed
+
 # ------------------- Styling helpers -------------------
 def local_css(file_name):
     with open(file_name) as f:
@@ -124,9 +128,8 @@ sidebar_icons = {
 }
 
 with st.sidebar:
-    toggle_label = "→" if st.session_state.sidebar_collapsed else "←"
-    if st.button(toggle_label, key="sidebar_toggle"):
-        st.session_state.sidebar_collapsed = not st.session_state.sidebar_collapsed
+    toggle_label = "→" if st.session_state.sidebar_collapsed else "Seize shadow-console ←"
+    st.button(toggle_label, key="sidebar_toggle", on_click=toggle_sidebar_state)
 
     sidebar_width = "80px" if st.session_state.sidebar_collapsed else "400px"
     sidebar_padding = "0.6rem 0.3rem" if st.session_state.sidebar_collapsed else "1.3rem"
@@ -188,7 +191,7 @@ with st.sidebar:
                 if col.button(label):
                     st.session_state.year_slider = years
                     st.session_state.year_range_value = years
-                    st.experimental_rerun()
+                    st.rerun()
             era_label = f"You're exploring: {st.session_state.year_range_value[0]}–{st.session_state.year_range_value[1]}"
             st.caption(era_label)
 
@@ -203,7 +206,7 @@ with st.sidebar:
             if st.button("Reset filters"):
                 st.session_state.year_range_value = (1990, 2025)
                 st.session_state.min_score_value = 50
-                st.experimental_rerun()
+                st.rerun()
 
 # ------------------- Hero + intro -------------------
 hero_path = PROJECT_ROOT / "src" / "app" / "heroarea.png"
@@ -266,7 +269,7 @@ with st.container():
                 if not st.session_state.mood_input:
                     st.warning("Tell me a feeling first ✨")
                 else:
-                    st.experimental_rerun()
+                    st.rerun()
 
         if user_input:
             st.caption("🪄 Interpreting your vibe in real time…")
@@ -311,7 +314,7 @@ if not user_input:
             col = chip_cols[idx]
             if col.button(label, key=f"chip_{idx}"):
                 st.session_state.mood_input = text
-                st.experimental_rerun()
+                st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
 else:
     with st.spinner("Summoning anime energy…"):
