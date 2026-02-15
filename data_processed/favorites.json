@@ -36,5 +36,43 @@
       "start_year": 2005,
       "cover_large": ""
     }
+  },
+  {
+    "meta": {
+      "id": 4,
+      "title_english": "Toradora!",
+      "description": "A romantic comedy-drama with strong emotional beats.",
+      "genres": [
+        "Romance",
+        "Comedy"
+      ],
+      "tags": [
+        "romcom",
+        "school"
+      ],
+      "averageScore": 88,
+      "popularity": 150000,
+      "start_year": 2008,
+      "cover_large": ""
+    }
+  },
+  {
+    "meta": {
+      "id": 5,
+      "title_english": "Mushishi",
+      "description": "A calm, episodic, atmospheric series for chill moods.",
+      "genres": [
+        "Slice of Life",
+        "Mystery"
+      ],
+      "tags": [
+        "iyashikei",
+        "calm"
+      ],
+      "averageScore": 89,
+      "popularity": 80000,
+      "start_year": 2005,
+      "cover_large": ""
+    }
   }
 ]
