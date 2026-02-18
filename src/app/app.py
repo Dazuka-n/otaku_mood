@@ -119,13 +119,11 @@ local_css("src/app/style.css")
 def open_detail_modal(payload: dict):
     st.session_state.detail_modal_payload = payload
     st.session_state.show_detail_modal = True
-    st.session_state.debug_last_event = "open_detail_modal"
 
 
 def close_detail_modal():
     st.session_state.show_detail_modal = False
     st.session_state.detail_modal_payload = None
-    st.session_state.debug_last_event = "close_detail_modal"
 
 
 def render_detail_modal():
@@ -648,12 +646,6 @@ else:
             favorites_panel()
             if st.button("Close favorites", key="close_favs"):
                 st.session_state.show_favorites_modal = False
-
-with st.sidebar.expander("🛠 Debug", expanded=False):
-    st.write("show_detail_modal", st.session_state.show_detail_modal)
-    payload = st.session_state.get("detail_modal_payload")
-    st.write("payload keys", list(payload.keys()) if payload else None)
-    st.write("last event", st.session_state.get("debug_last_event"))
 
 st.markdown("<div class='section-spacer-lg'></div>", unsafe_allow_html=True)
 with st.container():
