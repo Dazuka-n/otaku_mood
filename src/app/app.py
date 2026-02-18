@@ -53,6 +53,14 @@ VIBE_ADJUSTMENTS = [
     "Too dark",
 ]
 
+DEMO_VIDEO_PATH = ENV.get("DEMO_VIDEO_PATH")
+PROJECT_GUIDE_POINTS = [
+    "Start by channeling your vibe in the main composer — adjectives, emojis, or full prompts all work.",
+    "Fine-tune the era and score sliders on the left to match your nostalgia levels.",
+    "Use Explain to open the full detail view and see why each anime matches your mood.",
+    "Save favorites to build a mini altar of comfort rewatches.",
+]
+
 if "sidebar_collapsed" not in st.session_state:
     st.session_state.sidebar_collapsed = False
 if "manual_mood_value" not in st.session_state:
@@ -69,7 +77,10 @@ if "show_favorites_modal" not in st.session_state:
     st.session_state.show_favorites_modal = False
 if "trigger_results" not in st.session_state:
     st.session_state.trigger_results = False
-
+if "show_detail_modal" not in st.session_state:
+    st.session_state.show_detail_modal = False
+if "detail_modal_payload" not in st.session_state:
+    st.session_state.detail_modal_payload = None
 
 def trigger_results_view(value: str | None = None, update_text: bool = False):
     if value is None:
@@ -103,6 +114,115 @@ def clean_snippet(text: str, limit: int = 420) -> str:
 
 local_css("src/app/style.css")
 # -------------------------------------------------------
+
+def open_detail_modal(payload: dict):
+    st.session_state.detail_modal_payload = payload
+    st.session_state.show_detail_modal = True
+
+
+def close_detail_modal():
+    st.session_state.show_detail_modal = False
+    st.session_state.detail_modal_payload = None
+
+
+def render_detail_modal():
+    payload = st.session_state.get("detail_modal_payload")
+    if not payload:
+        return
+
+    meta = payload.get("meta", {})
+    cover_url = payload.get("cover_url") or meta.get("banner_image") or meta.get("cover_large")
+    backdrop = cover_url or "https://placehold.co/1200x500/111428/FFFFFF?text=OtakuMood"
+    genres = payload.get("genres") or []
+    score_value = payload.get("score_value")
+    score_badge = "score-none"
+    if score_value is not None:
+        if score_value >= 90:
+            score_badge = "score-high"
+        elif score_value >= 80:
+            score_badge = "score-mid"
+        else:
+            score_badge = "score-low"
+
+    watch_links = payload.get("watch_links") or []
+    why_text = payload.get("why_text")
+    description = meta.get("description") or payload.get("clean_description")
+    mood_value = payload.get("mood", "")
+
+    with st.modal("Anime detail", key="detail_modal", max_width=1100):
+        st.markdown(
+            """
+            <style>
+            [data-testid='stModal'] {background: rgba(4,6,20,0.85) !important;}
+            [data-testid='stModalContent'] {padding: 0 !important;}
+            [data-testid='stModal'] button[aria-label='Close'] {display: none;}
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.markdown(
+            f"""
+            <div class='omd-detail-modal'>
+                <div class='omd-detail-hero' style="background-image: url('{backdrop}');">
+                    <div class='omd-detail-hero-gradient'></div>
+                    <div class='omd-detail-hero-content'>
+                        <div class='omd-detail-meta-top'>
+                            <p class='omd-detail-eyebrow'>Mood-aligned spotlight</p>
+                            <h2>{payload.get('title', 'Untitled')}</h2>
+                            <div class='omd-detail-meta-row'>
+                                <span class='omd-detail-year'>{payload.get('year', '—')}</span>
+                                <span class='omd-detail-score detail-score {score_badge}'>{score_value or '—'}</span>
+                            </div>
+                            <div class='omd-detail-tags'>
+                                {''.join([f"<span>{g}</span>" for g in genres[:5]])}
+                            </div>
+                            <p class='omd-detail-tagline'>{clean_snippet(description, 220)}</p>
+                        </div>
+                        <div class='omd-detail-action-row'>
+                            <button class='omd-btn-primary'>&#9654; Watch Now</button>
+                            <button class='omd-btn-secondary'>&#128190; Save</button>
+                            <button class='omd-btn-secondary'>&#128077; Like</button>
+                            <button class='omd-btn-secondary'>&#128078; Dislike</button>
+                        </div>
+                    </div>
+                </div>
+                <div class='omd-detail-body'>
+                    <div class='omd-detail-columns'>
+                        <div class='omd-detail-column'>
+                            <h4>Synopsis</h4>
+                            <p>{description or 'No synopsis available.'}</p>
+                            <div class='omd-detail-section'>
+                                <h4>Why this matches you</h4>
+                                <div class='omd-mood-pill'>{mood_value}</div>
+                                <p>{why_text}</p>
+                            </div>
+                        </div>
+                        <div class='omd-detail-column'>
+                            <h4>Details</h4>
+                            <ul class='omd-detail-list'>
+                                <li><strong>Year:</strong> {payload.get('year', '—')}</li>
+                                <li><strong>Score:</strong> {score_value or '—'}</li>
+                                <li><strong>Episodes:</strong> {payload.get('episodes') or '—'}</li>
+                                <li><strong>Duration:</strong> {payload.get('duration') or '—'} min</li>
+                            </ul>
+                            <div class='omd-detail-section'>
+                                <h4>Available on</h4>
+                                <div class='omd-watch-links'>
+                                    {''.join([f"<a href='{link.get('url')}' target='_blank' rel='noopener' class='omd-watch-link'>{link.get('label', 'Watch')}</a>" for link in watch_links]) or '<span class="omd-watch-placeholder">No platforms listed.</span>'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.markdown("<div class='section-spacer-sm'></div>", unsafe_allow_html=True)
+        if st.button("Close detail view", use_container_width=True):
+            close_detail_modal()
 
 # Groq client
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
@@ -420,8 +540,21 @@ else:
 
                     action_cols = st.columns([1, 1])
                     if action_cols[0].button("Explain", key=f"explain_{i}"):
-                        explanation = run_chain_groq(user_input, mood)
-                        st.info(explanation)
+                        payload = {
+                            "meta": meta,
+                            "clean_description": clean_snippet(meta.get("description"), limit=2000),
+                            "genres": genres,
+                            "mood": mood,
+                            "why_text": why_text,
+                            "cover_url": cover_url,
+                            "score_value": score_value,
+                            "title": title,
+                            "year": year_display,
+                            "episodes": meta.get("episodes"),
+                            "duration": meta.get("duration"),
+                            "watch_links": meta.get("watchLinks", []),
+                        }
+                        open_detail_modal(payload)
                     if action_cols[1].button("Save", key=f"fav_{i}"):
                         fav_file = Path("data_processed/favorites.json")
                         favs = []
@@ -494,3 +627,23 @@ else:
             favorites_panel()
             if st.button("Close favorites", key="close_favs"):
                 st.session_state.show_favorites_modal = False
+
+st.markdown("<div class='section-spacer-lg'></div>", unsafe_allow_html=True)
+with st.container():
+    st.markdown("---")
+    st.subheader("🎬 Watch the OtakuMood demo")
+    if DEMO_VIDEO_PATH:
+        video_path = Path(DEMO_VIDEO_PATH)
+        if video_path.exists():
+            st.video(video_path.read_bytes())
+        else:
+            st.error(f"Couldn't find demo video at {video_path}")
+    else:
+        st.info("Set `DEMO_VIDEO_PATH` in your .env file to surface the demo video here.")
+
+    st.markdown("#### 🧭 Quick guide")
+    for tip in PROJECT_GUIDE_POINTS:
+        st.markdown(f"- {tip}")
+
+if st.session_state.show_detail_modal:
+    render_detail_modal()
