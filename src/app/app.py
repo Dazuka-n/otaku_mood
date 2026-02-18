@@ -11,6 +11,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
 import streamlit as st
+import streamlit.components.v1 as components
 from sentence_transformers import SentenceTransformer
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, TextClassificationPipeline
 from dotenv import load_dotenv
@@ -118,11 +119,13 @@ local_css("src/app/style.css")
 def open_detail_modal(payload: dict):
     st.session_state.detail_modal_payload = payload
     st.session_state.show_detail_modal = True
+    st.session_state.debug_last_event = "open_detail_modal"
 
 
 def close_detail_modal():
     st.session_state.show_detail_modal = False
     st.session_state.detail_modal_payload = None
+    st.session_state.debug_last_event = "close_detail_modal"
 
 
 def render_detail_modal():
@@ -149,80 +152,98 @@ def render_detail_modal():
     description = meta.get("description") or payload.get("clean_description")
     mood_value = payload.get("mood", "")
 
-    with st.modal("Anime detail", key="detail_modal", max_width=1100):
-        st.markdown(
-            """
-            <style>
-            [data-testid='stModal'] {background: rgba(4,6,20,0.85) !important;}
-            [data-testid='stModalContent'] {padding: 0 !important;}
-            [data-testid='stModal'] button[aria-label='Close'] {display: none;}
-            </style>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        st.markdown(
-            f"""
-            <div class='omd-detail-modal'>
-                <div class='omd-detail-hero' style="background-image: url('{backdrop}');">
-                    <div class='omd-detail-hero-gradient'></div>
-                    <div class='omd-detail-hero-content'>
-                        <div class='omd-detail-meta-top'>
-                            <p class='omd-detail-eyebrow'>Mood-aligned spotlight</p>
-                            <h2>{payload.get('title', 'Untitled')}</h2>
-                            <div class='omd-detail-meta-row'>
-                                <span class='omd-detail-year'>{payload.get('year', '—')}</span>
-                                <span class='omd-detail-score detail-score {score_badge}'>{score_value or '—'}</span>
-                            </div>
-                            <div class='omd-detail-tags'>
-                                {''.join([f"<span>{g}</span>" for g in genres[:5]])}
-                            </div>
-                            <p class='omd-detail-tagline'>{clean_snippet(description, 220)}</p>
+    overlay_html = f"""
+    <div class='omd-detail-modal-overlay' onclick="window.parent.postMessage({{type:'omd-close-modal'}}, '*')">
+        <div class='omd-detail-modal' onclick="event.stopPropagation()">
+            <button class='omd-detail-close' onclick="window.parent.postMessage({{type:'omd-close-modal'}}, '*')">×</button>
+            <div class='omd-detail-hero' style="background-image: url('{backdrop}');">
+                <div class='omd-detail-hero-gradient'></div>
+                <div class='omd-detail-hero-content'>
+                    <div class='omd-detail-meta-top'>
+                        <p class='omd-detail-eyebrow'>Mood-aligned spotlight</p>
+                        <h2>{payload.get('title', 'Untitled')}</h2>
+                        <div class='omd-detail-meta-row'>
+                            <span class='omd-detail-year'>{payload.get('year', '—')}</span>
+                            <span class='omd-detail-score detail-score {score_badge}'>{score_value or '—'}</span>
                         </div>
-                        <div class='omd-detail-action-row'>
-                            <button class='omd-btn-primary'>&#9654; Watch Now</button>
-                            <button class='omd-btn-secondary'>&#128190; Save</button>
-                            <button class='omd-btn-secondary'>&#128077; Like</button>
-                            <button class='omd-btn-secondary'>&#128078; Dislike</button>
+                        <div class='omd-detail-tags'>
+                            {''.join([f"<span>{g}</span>" for g in genres[:5]])}
                         </div>
+                        <p class='omd-detail-tagline'>{clean_snippet(description, 220)}</p>
+                    </div>
+                    <div class='omd-detail-action-row'>
+                        <button class='omd-btn-primary'>&#9654; Watch Now</button>
+                        <button class='omd-btn-secondary'>&#128190; Save</button>
+                        <button class='omd-btn-secondary'>&#128077; Like</button>
+                        <button class='omd-btn-secondary'>&#128078; Dislike</button>
                     </div>
                 </div>
-                <div class='omd-detail-body'>
-                    <div class='omd-detail-columns'>
-                        <div class='omd-detail-column'>
-                            <h4>Synopsis</h4>
-                            <p>{description or 'No synopsis available.'}</p>
-                            <div class='omd-detail-section'>
-                                <h4>Why this matches you</h4>
-                                <div class='omd-mood-pill'>{mood_value}</div>
-                                <p>{why_text}</p>
-                            </div>
+            </div>
+            <div class='omd-detail-body'>
+                <div class='omd-detail-columns'>
+                    <div class='omd-detail-column'>
+                        <h4>Synopsis</h4>
+                        <p>{description or 'No synopsis available.'}</p>
+                        <div class='omd-detail-section'>
+                            <h4>Why this matches you</h4>
+                            <div class='omd-mood-pill'>{mood_value}</div>
+                            <p>{why_text}</p>
                         </div>
-                        <div class='omd-detail-column'>
-                            <h4>Details</h4>
-                            <ul class='omd-detail-list'>
-                                <li><strong>Year:</strong> {payload.get('year', '—')}</li>
-                                <li><strong>Score:</strong> {score_value or '—'}</li>
-                                <li><strong>Episodes:</strong> {payload.get('episodes') or '—'}</li>
-                                <li><strong>Duration:</strong> {payload.get('duration') or '—'} min</li>
-                            </ul>
-                            <div class='omd-detail-section'>
-                                <h4>Available on</h4>
-                                <div class='omd-watch-links'>
-                                    {''.join([f"<a href='{link.get('url')}' target='_blank' rel='noopener' class='omd-watch-link'>{link.get('label', 'Watch')}</a>" for link in watch_links]) or '<span class="omd-watch-placeholder">No platforms listed.</span>'}
-                                </div>
+                    </div>
+                    <div class='omd-detail-column'>
+                        <h4>Details</h4>
+                        <ul class='omd-detail-list'>
+                            <li><strong>Year:</strong> {payload.get('year', '—')}</li>
+                            <li><strong>Score:</strong> {score_value or '—'}</li>
+                            <li><strong>Episodes:</strong> {payload.get('episodes') or '—'}</li>
+                            <li><strong>Duration:</strong> {payload.get('duration') or '—'} min</li>
+                        </ul>
+                        <div class='omd-detail-section'>
+                            <h4>Available on</h4>
+                            <div class='omd-watch-links'>
+                                {''.join([f"<a href='{link.get('url')}' target='_blank' rel='noopener' class='omd-watch-link'>{link.get('label', 'Watch')}</a>" for link in watch_links]) or '<span class="omd-watch-placeholder">No platforms listed.</span>'}
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        </div>
+    </div>
+    """
 
-        st.markdown("<div class='section-spacer-sm'></div>", unsafe_allow_html=True)
-        if st.button("Close detail view", use_container_width=True):
-            close_detail_modal()
+    st.markdown(overlay_html, unsafe_allow_html=True)
+
+    hidden_btn = st.button("close_detail_modal_internal", key="close_detail_modal_internal")
+    if hidden_btn:
+        close_detail_modal()
+
+    components.html(
+        """
+        <script>
+        (function() {
+            const hideButton = () => {
+                const btns = window.parent.document.querySelectorAll('button');
+                btns.forEach(btn => {
+                    if (btn.innerText === 'close_detail_modal_internal') {
+                        btn.setAttribute('data-omd-close', 'true');
+                        btn.style.display = 'none';
+                    }
+                });
+            };
+            hideButton();
+            window.addEventListener('message', (event) => {
+                if (event.data && event.data.type === 'omd-close-modal') {
+                    const btn = window.parent.document.querySelector('button[data-omd-close="true"]');
+                    if (btn) {
+                        btn.click();
+                    }
+                }
+            });
+        })();
+        </script>
+        """,
+        height=0,
+    )
 
 # Groq client
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
@@ -380,7 +401,7 @@ with st.container():
     with input_col:
         st.markdown("<div class='prompt-composer simple'>", unsafe_allow_html=True)
         user_input = st.text_area(
-            "",
+            "Describe your vibe",
             placeholder=placeholder_example,
             key="mood_input",
             label_visibility="collapsed",
@@ -627,6 +648,12 @@ else:
             favorites_panel()
             if st.button("Close favorites", key="close_favs"):
                 st.session_state.show_favorites_modal = False
+
+with st.sidebar.expander("🛠 Debug", expanded=False):
+    st.write("show_detail_modal", st.session_state.show_detail_modal)
+    payload = st.session_state.get("detail_modal_payload")
+    st.write("payload keys", list(payload.keys()) if payload else None)
+    st.write("last event", st.session_state.get("debug_last_event"))
 
 st.markdown("<div class='section-spacer-lg'></div>", unsafe_allow_html=True)
 with st.container():
