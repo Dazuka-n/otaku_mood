@@ -151,9 +151,9 @@ def render_detail_modal():
     mood_value = payload.get("mood", "")
 
     overlay_html = f"""
-    <div class='omd-detail-modal-overlay' onclick="window.parent.postMessage({{type:'omd-close-modal'}}, '*')">
+    <div class='omd-detail-modal-overlay' onclick="if(event.target === this) window.triggerOmdClose(event);">
         <div class='omd-detail-modal' onclick="event.stopPropagation()">
-            <button class='omd-detail-close' onclick="window.parent.postMessage({{type:'omd-close-modal'}}, '*')">×</button>
+            <button class='omd-detail-close' type='button' aria-label="Close detail" onclick="window.triggerOmdClose(event)"><span>&times;</span></button>
             <div class='omd-detail-hero' style="background-image: url('{backdrop}');">
                 <div class='omd-detail-hero-gradient'></div>
                 <div class='omd-detail-hero-content'>
@@ -168,12 +168,6 @@ def render_detail_modal():
                             {''.join([f"<span>{g}</span>" for g in genres[:5]])}
                         </div>
                         <p class='omd-detail-tagline'>{clean_snippet(description, 220)}</p>
-                    </div>
-                    <div class='omd-detail-action-row'>
-                        <button class='omd-btn-primary'>&#9654; Watch Now</button>
-                        <button class='omd-btn-secondary'>&#128190; Save</button>
-                        <button class='omd-btn-secondary'>&#128077; Like</button>
-                        <button class='omd-btn-secondary'>&#128078; Dislike</button>
                     </div>
                 </div>
             </div>
@@ -207,6 +201,20 @@ def render_detail_modal():
             </div>
         </div>
     </div>
+    <script>
+        window.triggerOmdClose = window.triggerOmdClose || function(event) {{
+            if (event) {{
+                event.stopPropagation();
+                event.preventDefault();
+            }}
+            const btn = window.parent.document.querySelector('button[data-omd-close=\"true\"]');
+            if (btn) {{
+                btn.click();
+            }} else {{
+                window.parent.postMessage({{type:'omd-close-modal'}}, '*');
+            }}
+        }};
+    </script>
     """
 
     st.markdown(overlay_html, unsafe_allow_html=True)
