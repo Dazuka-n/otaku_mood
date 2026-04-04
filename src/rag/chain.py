@@ -34,11 +34,14 @@ def run_chain(query, mood, llm_api_key=None):
 
     # 3. Initialize Groq LLM
     llm = ChatGroq(
-        api_key=llm_api_key,        # pass GROQ_API_KEY from .env
-        model="llama3-8b-8192",     # free Groq model
+        api_key=llm_api_key,
+        model="llama-3.3-70b-versatile",
         temperature=0.1
     )
 
     # 4. Run the chain
-    resp = llm.invoke(prompt)
-    return resp.content if hasattr(resp, "content") else str(resp)
+    try:
+        resp = llm.invoke(prompt)
+        return resp.content if hasattr(resp, "content") else str(resp)
+    except Exception as e:
+        return f"Could not generate explanation: {str(e)[:120]}"

@@ -603,11 +603,11 @@ textarea:focus {
     position: absolute;
     top: 1.5rem;
     right: 1.5rem;
-    width: 48px;
-    height: 48px;
+    width: 32px;
+    height: 32px;
     border-radius: 50%;
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    background: linear-gradient(180deg, rgba(6, 7, 18, 0.92), rgba(6, 7, 18, 0.75));
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    background: rgba(0, 0, 0, 0.55);
     color: rgba(255, 255, 255, 0.92);
     font-size: 1.5rem;
     cursor: pointer;

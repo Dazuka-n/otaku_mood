@@ -12,8 +12,6 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import streamlit as st
 import streamlit.components.v1 as components
-from sentence_transformers import SentenceTransformer
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, TextClassificationPipeline
 from dotenv import load_dotenv
 from groq import Groq
 
@@ -25,6 +23,22 @@ load_dotenv()
 ENV = load_env()
 
 st.set_page_config(page_title="OtakuMood", layout="wide")
+
+st.markdown("""
+<style>
+[data-testid="stSidebar"] {
+    z-index: 1 !important;
+}
+.omd-detail-modal-overlay {
+    z-index: 9999 !important;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
 if "mood_input" not in st.session_state:
     st.session_state.mood_input = ""
@@ -69,7 +83,7 @@ if "manual_mood_value" not in st.session_state:
 if "year_range_value" not in st.session_state:
     st.session_state.year_range_value = (1990, 2025)
 if "min_score_value" not in st.session_state:
-    st.session_state.min_score_value = 50
+    st.session_state.min_score_value = 70
 if "show_filter_modal" not in st.session_state:
     st.session_state.show_filter_modal = False
 if "show_mood_modal" not in st.session_state:
@@ -82,13 +96,25 @@ if "show_detail_modal" not in st.session_state:
     st.session_state.show_detail_modal = False
 if "detail_modal_payload" not in st.session_state:
     st.session_state.detail_modal_payload = None
+# last_query holds the text at the moment the user pressed submit —
+# separate from mood_input so filter changes don't re-trigger mood detection.
+if "last_query" not in st.session_state:
+    st.session_state.last_query = ""
+if "detected_mood" not in st.session_state:
+    st.session_state.detected_mood = None
+if "query_run" not in st.session_state:
+    st.session_state.query_run = False
 
 def trigger_results_view(value: str | None = None, update_text: bool = False):
     if value is None:
         value = st.session_state.get("mood_input", "")
-    if update_text:
-        st.session_state.mood_input = value
-    st.session_state.trigger_results = bool(value.strip())
+    # update_text is intentionally ignored — writing to a widget key after
+    # instantiation raises StreamlitAPIException. last_query holds the query.
+    if value.strip():
+        st.session_state.last_query = value.strip()
+        st.session_state.trigger_results = True
+        st.session_state.query_run = True
+        st.session_state.detected_mood = None  # reset so mood is re-detected for new query
 
 # ------------------- Styling helpers -------------------
 def local_css(file_name):
@@ -110,7 +136,7 @@ def clean_snippet(text: str, limit: int = 420) -> str:
     text = text.replace("\n", " ").strip()
     if len(text) <= limit:
         return text
-    return text[:limit].rsplit(" ", 1)[0] + "…"
+    return text[:limit].rsplit(" ", 1)[0] + "..."
 
 
 local_css("src/app/style.css")
@@ -119,6 +145,7 @@ local_css("src/app/style.css")
 def open_detail_modal(payload: dict):
     st.session_state.detail_modal_payload = payload
     st.session_state.show_detail_modal = True
+    st.rerun()
 
 
 def close_detail_modal():
@@ -132,7 +159,7 @@ def render_detail_modal():
         return
 
     meta = payload.get("meta", {})
-    cover_url = payload.get("cover_url") or meta.get("banner_image") or meta.get("cover_large")
+    cover_url = payload.get("cover_url") or meta.get("cover_url")
     backdrop = cover_url or "https://placehold.co/1200x500/111428/FFFFFF?text=OtakuMood"
     genres = payload.get("genres") or []
     score_value = payload.get("score_value")
@@ -150,6 +177,26 @@ def render_detail_modal():
     description = meta.get("description") or payload.get("clean_description")
     mood_value = payload.get("mood", "")
 
+    # ── STEP 1: Native close button rendered FIRST so Streamlit tracks it
+    # before any HTML content is injected. JS below will mark it and hide it.
+    if st.button("✕ Close", key="close_detail_modal_btn"):
+        close_detail_modal()
+        st.rerun()
+
+    # ── STEP 2: Escape key closes the modal via the native button above
+    components.html("""
+    <script>
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            var btn = window.parent.document.querySelector('button[data-omd-close="true"]');
+            if (btn) btn.click();
+        }
+    });
+    </script>
+    """, height=0)
+
+    # ── STEP 3: HTML overlay (× triggers triggerOmdClose which clicks the
+    # native button via data-omd-close attribute set by the wiring script)
     overlay_html = f"""
     <div class='omd-detail-modal-overlay' onclick="if(event.target === this) window.triggerOmdClose(event);">
         <div class='omd-detail-modal' onclick="event.stopPropagation()">
@@ -188,7 +235,7 @@ def render_detail_modal():
                             <li><strong>Year:</strong> {payload.get('year', '—')}</li>
                             <li><strong>Score:</strong> {score_value or '—'}</li>
                             <li><strong>Episodes:</strong> {payload.get('episodes') or '—'}</li>
-                            <li><strong>Duration:</strong> {payload.get('duration') or '—'} min</li>
+                            <li><strong>Duration:</strong> {payload.get('duration_mins') or '—'} min</li>
                         </ul>
                         <div class='omd-detail-section'>
                             <h4>Available on</h4>
@@ -207,7 +254,7 @@ def render_detail_modal():
                 event.stopPropagation();
                 event.preventDefault();
             }}
-            const btn = window.parent.document.querySelector('button[data-omd-close=\"true\"]');
+            var btn = window.parent.document.querySelector('button[data-omd-close="true"]');
             if (btn) {{
                 btn.click();
             }} else {{
@@ -216,33 +263,35 @@ def render_detail_modal():
         }};
     </script>
     """
-
     st.markdown(overlay_html, unsafe_allow_html=True)
 
-    hidden_btn = st.button("close_detail_modal_internal", key="close_detail_modal_internal")
-    if hidden_btn:
-        close_detail_modal()
-
+    # ── STEP 4: Wire the native button — mark it, visually hide it, and
+    # handle the postMessage fallback in case the attribute isn't set yet.
     components.html(
         """
         <script>
         (function() {
-            const hideButton = () => {
-                const btns = window.parent.document.querySelectorAll('button');
-                btns.forEach(btn => {
-                    if (btn.innerText === 'close_detail_modal_internal') {
+            function wire() {
+                var btns = window.parent.document.querySelectorAll('button');
+                btns.forEach(function(btn) {
+                    if (btn.innerText.trim() === '\u2715 Close') {
                         btn.setAttribute('data-omd-close', 'true');
-                        btn.style.display = 'none';
+                        btn.style.position = 'absolute';
+                        btn.style.width = '1px';
+                        btn.style.height = '1px';
+                        btn.style.opacity = '0';
+                        btn.style.pointerEvents = 'none';
+                        btn.style.overflow = 'hidden';
+                        btn.style.clip = 'rect(0,0,0,0)';
                     }
                 });
-            };
-            hideButton();
-            window.addEventListener('message', (event) => {
+            }
+            wire();
+            setTimeout(wire, 120);
+            window.addEventListener('message', function(event) {
                 if (event.data && event.data.type === 'omd-close-modal') {
-                    const btn = window.parent.document.querySelector('button[data-omd-close="true"]');
-                    if (btn) {
-                        btn.click();
-                    }
+                    var btn = window.parent.document.querySelector('button[data-omd-close="true"]');
+                    if (btn) btn.click();
                 }
             });
         })();
@@ -251,24 +300,17 @@ def render_detail_modal():
         height=0,
     )
 
-# Groq client
-client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+# Groq client — reads from st.secrets first, falls back to env
+def _get_groq_key():
+    try:
+        key = st.secrets.get("GROQ_API_KEY")
+        if key:
+            return key
+    except Exception:
+        pass
+    return os.environ.get("GROQ_API_KEY", "")
 
-@st.cache_resource
-def load_models():
-    mood_model_dir = ENV.get("MOOD_CLASSIFIER_PATH", "models/mood_intent_classifier/mood")
-    tokenizer = AutoTokenizer.from_pretrained(mood_model_dir)
-    model = AutoModelForSequenceClassification.from_pretrained(mood_model_dir)
-    pipe = TextClassificationPipeline(model=model, tokenizer=tokenizer, return_all_scores=False, device=-1)
-    embed_model = SentenceTransformer("all-MiniLM-L6-v2")
-    return pipe, embed_model
-
-# Attempt to load, with graceful fallback
-try:
-    mood_pipe, embed_model = load_models()
-except Exception as e:
-    mood_pipe = None
-    embed_model = SentenceTransformer("all-MiniLM-L6-v2")
+client = Groq(api_key=_get_groq_key())
 
 sidebar_icons = {
     "mood": "🎭",
@@ -285,30 +327,6 @@ with st.sidebar:
     if st.button(toggle_label, key="sidebar_toggle"):
         st.session_state.sidebar_collapsed = not st.session_state.sidebar_collapsed
 
-    sidebar_width = "80px" if st.session_state.sidebar_collapsed else "400px"
-    sidebar_padding = "0.6rem 0.3rem" if st.session_state.sidebar_collapsed else "1.3rem"
-
-    st.markdown(
-        f"""
-        <style>
-        section[data-testid="stSidebar"] {{
-            width: {sidebar_width} !important;
-            min-width: {sidebar_width} !important;
-            transition: width 0.25s ease;
-        }}
-        section[data-testid="stSidebar"] > div:first-child {{
-            width: {sidebar_width} !important;
-            padding: {sidebar_padding} !important;
-        }}
-        .main .block-container {{
-            transition: margin-left 0.25s ease;
-            margin-left: 0 !important;
-        }}
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
     if st.session_state.sidebar_collapsed:
         col = st.container()
         if col.button(f"{sidebar_icons['mood']}", key="mood_icon"):
@@ -320,21 +338,18 @@ with st.sidebar:
     else:
         st.title("OtakuMood")
         with st.expander("🎭 Mood Controls", expanded=True):
+            _mood_opts = ["(auto)", "happy", "sad", "chill", "excited", "anxious", "romantic", "dark", "nostalgic"]
+            _mood_idx = _mood_opts.index(st.session_state.manual_mood_value) if st.session_state.manual_mood_value in _mood_opts else 0
             st.session_state.manual_mood_value = st.selectbox(
                 "Override mood",
-                ["(auto)", "happy", "chill", "sad", "angry", "romantic", "adventurous", "nostalgic", "inspiring"],
-                index=["(auto)", "happy", "chill", "sad", "angry", "romantic", "adventurous", "nostalgic", "inspiring"].index(st.session_state.manual_mood_value),
+                _mood_opts,
+                index=_mood_idx,
                 key="manual_mood_select",
             )
 
         with st.expander("📊 Era & Score", expanded=True):
-            st.session_state.year_range_value = st.slider(
-                "Year range",
-                1980,
-                2025,
-                st.session_state.year_range_value,
-                key="year_slider",
-            )
+            # Preset buttons rendered BEFORE the slider so the staging key
+            # can be read and applied as the slider's default value.
             presets = {
                 "90s Classics": (1990, 1999),
                 "2000s Era": (2000, 2009),
@@ -343,9 +358,25 @@ with st.sidebar:
             preset_cols = st.columns(len(presets))
             for (label, years), col in zip(presets.items(), preset_cols):
                 if col.button(label):
-                    st.session_state.year_slider = years
-                    st.session_state.year_range_value = years
-                    st.session_state.trigger_results = True
+                    st.session_state.year_preset = years
+                    st.rerun()
+
+            if st.button("Reset filters"):
+                st.session_state.year_preset = (1990, 2025)
+                st.session_state.min_score_value = 70
+                st.rerun()
+
+            # Apply staged preset before slider instantiation, then clear it.
+            # pop() returns None when key is absent; fall back to current range.
+            default_years = st.session_state.pop("year_preset", None) or st.session_state.year_range_value
+
+            st.session_state.year_range_value = st.slider(
+                "Year range",
+                1980,
+                2025,
+                default_years,
+                key="year_slider",
+            )
             era_label = f"You're exploring: {st.session_state.year_range_value[0]}–{st.session_state.year_range_value[1]}"
             st.caption(era_label)
 
@@ -356,11 +387,6 @@ with st.sidebar:
                 st.session_state.min_score_value,
                 key="score_slider",
             )
-
-            if st.button("Reset filters"):
-                st.session_state.year_range_value = (1990, 2025)
-                st.session_state.min_score_value = 50
-                st.session_state.trigger_results = True
 
 # ------------------- Hero + intro -------------------
 hero_path = PROJECT_ROOT / "src" / "app" / "heroarea.png"
@@ -390,29 +416,14 @@ with st.container():
     with lead_col:
         st.subheader("What kind of story do you want to step into tonight?")
         st.caption("Use words, emojis, or vibes. We'll interpret the mood magic for you ✨")
-        st.markdown("<div class='section-spacer-sm'></div>", unsafe_allow_html=True)
-        st.markdown(
-            """
-            <div class="mood-chip-block">
-                <div class="mood-icons">
-                    <span>😊 Cozy</span>
-                    <span>🔥 Hype</span>
-                    <span>🌀 Mind-bend</span>
-                    <span>💖 Tender</span>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
     with input_col:
         st.markdown("<div class='prompt-composer simple'>", unsafe_allow_html=True)
-        user_input = st.text_area(
+        st.text_area(
             "Describe your vibe",
             placeholder=placeholder_example,
             key="mood_input",
             label_visibility="collapsed",
             height=150,
-            on_change=lambda: trigger_results_view(st.session_state.get("mood_input", ""), update_text=False),
         )
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -421,13 +432,12 @@ with st.container():
             st.caption("Describe your mood or let OtakuMood sense it automatically.")
         with action_cols[1]:
             if st.button("Summon vibe ✨", use_container_width=True):
-                if not st.session_state.mood_input:
+                query = st.session_state.get("mood_input", "").strip()
+                if not query:
                     st.warning("Tell me a feeling first ✨")
                 else:
-                    trigger_results_view()
+                    trigger_results_view(query)
 
-        if user_input:
-            st.caption("🪄 Interpreting your vibe in real time…")
 # ---------------------------------------------------
 
 def run_chain_groq(query, mood):
@@ -436,7 +446,7 @@ def run_chain_groq(query, mood):
 Explain briefly why the recommended anime matches their mood and preferences."""
     try:
         response = client.chat.completions.create(
-            model="llama3-8b-8192",  # you can switch to "mixtral-8x7b-32768" if available
+            model="llama-3.3-70b-versatile",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
             max_tokens=300
@@ -445,9 +455,33 @@ Explain briefly why the recommended anime matches their mood and preferences."""
     except Exception as e:
         return f"(Groq error: {e})"
 
+def detect_mood(text: str) -> str:
+    try:
+        resp = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{
+                "role": "user",
+                "content": (
+                    "Classify the following text into exactly one mood label.\n"
+                    "Choose only from: happy, sad, chill, excited, anxious, romantic, dark, nostalgic\n"
+                    f'Text: "{text}"\n'
+                    "Reply with only the single mood label, nothing else."
+                ),
+            }],
+            max_tokens=10,
+            temperature=0,
+        )
+        mood = resp.choices[0].message.content.strip().lower()
+        valid = {"happy", "sad", "chill", "excited", "anxious", "romantic", "dark", "nostalgic"}
+        return mood if mood in valid else "chill"
+    except Exception as e:
+        st.warning(f"Mood detection unavailable ({e}), defaulting to 'chill'")
+        return "chill"
+
+
 results_placeholder = st.empty()
 
-if not user_input and not st.session_state.trigger_results:
+if not st.session_state.last_query:
     with results_placeholder.container():
         st.markdown("<div class='section-spacer-lg'></div>", unsafe_allow_html=True)
         st.markdown(
@@ -468,40 +502,52 @@ if not user_input and not st.session_state.trigger_results:
         for idx, (label, text) in enumerate(SUGGESTIONS):
             col = chip_cols[idx]
             if col.button(label, key=f"chip_{idx}"):
-                trigger_results_view(text)
+                trigger_results_view(text, update_text=True)
         st.markdown("</div>", unsafe_allow_html=True)
 else:
-    if st.session_state.trigger_results:
-        st.session_state.trigger_results = False
+    st.session_state.trigger_results = False
+    query = st.session_state.last_query
 
     manual_mood = st.session_state.manual_mood_value
     mood_notice = None
     if manual_mood != "(auto)":
         mood = manual_mood
+        st.session_state.detected_mood = mood
         mood_notice = ("info", f"Manual mood override: {mood}")
+    elif st.session_state.detected_mood:
+        # reuse cached mood — avoids Groq call on every filter slider change
+        mood = st.session_state.detected_mood
+        mood_notice = ("success", f"Detected mood: {mood}")
     else:
-        if mood_pipe:
-            pred = mood_pipe(user_input, top_k=1)[0]
-            mood = pred['label']
-            mood_notice = ("success", f"Predicted mood: {mood}")
-        else:
-            mood = "chill"
-            mood_notice = ("warning", "Mood model not found, defaulting to 'chill'")
+        with st.spinner("Summoning your vibe... ✨"):
+            mood = detect_mood(query)
+            st.session_state.detected_mood = mood
+        mood_notice = ("success", f"Detected mood: {mood}")
 
-    with st.spinner("Summoning anime energy…"):
-        candidates = retrieve(user_input, top_k=25)
+    with st.spinner("Finding your anime... ✨"):
+        candidates = retrieve(query, top_k=25)
         reranked = rerank(candidates, mood)[:10]
 
         year_min, year_max = st.session_state.year_range_value
         min_score = st.session_state.min_score_value
 
         filtered = []
+        seen_ids = set()
         for c in reranked:
             meta = c['meta']
-            yr = meta.get('start_year') or 0
-            score = meta.get('averageScore') or 0
+            aid = meta.get('id')
+            if aid in seen_ids:
+                continue
+            seen_ids.add(aid)
+            yr = meta.get('year') or 0
+            score = meta.get('score') or 0
             if yr >= year_min and yr <= year_max and score >= min_score:
                 filtered.append(c)
+
+    components.html(
+        "<script>window.parent.scrollTo({top: 600, behavior: 'smooth'});</script>",
+        height=0,
+    )
 
     with results_placeholder.container():
         if mood_notice:
@@ -509,26 +555,27 @@ else:
             getattr(st, level)(message)
         st.subheader("Top recommendations")
         if not filtered:
-            st.warning("No titles matched your filters — try widening the year range or lowering the score threshold.")
+            st.info("No anime found. Try adjusting your filters or rewording your mood.")
         else:
             cols = st.columns(2, gap="large")
             for i, item in enumerate(filtered[:10]):
                 meta = item['meta']
                 col = cols[i % 2]
                 with col:
-                    cover_url = meta.get("cover_large")
-                    genres = meta.get('genres') or []
-                    title = meta.get('title_english') or meta.get('title_romaji') or "Untitled"
-                    score_value = meta.get('averageScore')
+                    cover_url = meta.get("cover_url")
+                    genres_raw = meta.get('genres') or ''
+                    genres = [g.strip() for g in genres_raw.split(',') if g.strip()]
+                    _t = meta.get('title') or "Untitled"
+                    title = _t[0].upper() + _t[1:] if _t else "Untitled"
+                    score_value = meta.get('score')
                     score_display = score_value if score_value is not None else "—"
                     desc = clean_snippet(meta.get("description"))
-                    year_display = meta.get('start_year') or '—'
+                    year_display = meta.get('year') or '—'
 
-                    if cover_url:
+                    if cover_url and str(cover_url) != 'nan':
                         cover_markup = f'<img src="{cover_url}" alt="{title} cover">'
                     else:
-                        initials = ''.join([w[0] for w in title.split()[:2]]).upper() or "??"
-                        cover_markup = f'<div class="cover-placeholder">{initials}</div>'
+                        cover_markup = f"<div class='cover-placeholder'>{title[0].upper() if title else '?'}</div>"
 
                     score_class = "score-low"
                     if score_value is None:
@@ -576,9 +623,9 @@ else:
                             "cover_url": cover_url,
                             "score_value": score_value,
                             "title": title,
-                            "year": year_display,
+                            "year": meta.get("year") or "—",
                             "episodes": meta.get("episodes"),
-                            "duration": meta.get("duration"),
+                            "duration_mins": meta.get("duration_mins"),
                             "watch_links": meta.get("watchLinks", []),
                         }
                         open_detail_modal(payload)
@@ -598,15 +645,20 @@ def favorites_panel():
         if favs:
             for f in favs[-5:]:
                 meta = f.get("meta", {})
-                cover = meta.get("cover_large") or "https://placehold.co/60x80/0f0f1f/FF4DFF?text=☆"
-                title = meta.get("title_english") or meta.get("title_romaji") or "Untitled"
+                cover = meta.get("cover_url") or "https://placehold.co/60x80/0f0f1f/FF4DFF?text=☆"
+                title = meta.get("title") or "Untitled"
+                genres_raw = meta.get("genres") or ""
+                if isinstance(genres_raw, list):
+                    first_genre = genres_raw[0] if genres_raw else "Anime classic"
+                else:
+                    first_genre = genres_raw.split(",")[0].strip() if genres_raw else "Anime classic"
                 st.markdown(
                     f"""
                     <div class="favorite-chip">
                         <img src="{cover}" alt="{title} cover">
                         <div>
                             <strong>{title}</strong><br/>
-                            <span>{meta.get('genres', ['Anime classic'])[0] if meta.get('genres') else 'Anime classic'}</span>
+                            <span>{first_genre}</span>
                         </div>
                     </div>
                     """,
@@ -623,10 +675,12 @@ if not st.session_state.sidebar_collapsed:
 else:
     if st.session_state.show_mood_modal:
         with st.expander("🎭 Mood Controls", expanded=True):
+            _mood_opts_m = ["(auto)", "happy", "sad", "chill", "excited", "anxious", "romantic", "dark", "nostalgic"]
+            _mood_idx_m = _mood_opts_m.index(st.session_state.manual_mood_value) if st.session_state.manual_mood_value in _mood_opts_m else 0
             st.session_state.manual_mood_value = st.selectbox(
                 "Override mood",
-                ["(auto)", "happy", "chill", "sad", "angry", "romantic", "adventurous", "nostalgic", "inspiring"],
-                index=["(auto)", "happy", "chill", "sad", "angry", "romantic", "adventurous", "nostalgic", "inspiring"].index(st.session_state.manual_mood_value),
+                _mood_opts_m,
+                index=_mood_idx_m,
                 key="manual_mood_modal",
             )
             if st.button("Close mood", key="close_mood"):
@@ -657,20 +711,18 @@ else:
 
 st.markdown("<div class='section-spacer-lg'></div>", unsafe_allow_html=True)
 with st.container():
-    st.markdown("---")
-    st.subheader("🎬 Watch the OtakuMood demo")
     if DEMO_VIDEO_PATH:
         video_path = Path(DEMO_VIDEO_PATH)
         if video_path.exists():
+            st.markdown("---")
+            st.markdown("<h3 style='margin-bottom:0.5rem'>🎬 Watch the OtakuMood demo</h3>", unsafe_allow_html=True)
             st.video(video_path.read_bytes())
-        else:
-            st.error(f"Couldn't find demo video at {video_path}")
-    else:
-        st.info("Set `DEMO_VIDEO_PATH` in your .env file to surface the demo video here.")
 
-    st.markdown("#### 🧭 Quick guide")
-    for tip in PROJECT_GUIDE_POINTS:
-        st.markdown(f"- {tip}")
+    if not st.session_state.get("query_run"):
+        st.markdown("---")
+        st.markdown("#### 🧭 Quick guide")
+        for tip in PROJECT_GUIDE_POINTS:
+            st.markdown(f"- {tip}")
 
 if st.session_state.show_detail_modal:
     render_detail_modal()
