@@ -1,2 +1,46 @@
+# Environment
 .env
 .env.example
+
+# Streamlit secrets
+.streamlit/secrets.toml
+
+# Claude Code
+.claude/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Models (large files)
+models/
+
+# Data (raw/processed - optional, uncomment if you don't want to track)
+# data_raw/
+# data_processed/
+# faiss_index/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
