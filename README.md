@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://capsule-render.vercel.app/api?type=venom&color=gradient&customColorList=12,19,24&height=240&section=header&text=OtakuMood&fontSize=80&fontColor=ffffff&fontAlignY=45&desc=Anime%20recommendations%20that%20match%20your%20soul%20%F0%9F%8E%AD&descAlignY=65&descSize=18&animation=fadeIn&reversal=false&stroke=9B59B6&strokeWidth=2" width="100%"/>
+<img src="https://capsule-render.vercel.app/api?type=slice&color=gradient&customColorList=2,17,19&height=240&section=header&text=OtakuMood&fontSize=80&fontColor=ffffff&fontAlignY=48&desc=Anime%20recommendations%20that%20match%20your%20soul%20%F0%9F%8E%AD&descAlignY=67&descSize=18&animation=twinkling&reversal=true&stroke=E91E8C&strokeWidth=3" width="100%"/>
 
 </div>
 
@@ -405,7 +405,7 @@ Favorites are persisted as a flat JSON file (`data_processed/favorites.json`) �
 
 <div align="center">
 
-<img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=12,19,24&height=130&section=footer&reversal=false" width="100%"/>
+<img src="https://capsule-render.vercel.app/api?type=slice&color=gradient&customColorList=2,17,19&height=130&section=footer&reversal=true" width="100%"/>
 
 **あなたの気分に合ったアニメを。**
 *An anime for every feeling.*
